@@ -7,15 +7,40 @@
  * -----------------------------------------------------------------------
  */
 
-import { finalizeEvent, verifyEvent, type Event, type UnsignedEvent } from "nostr-tools";
-import { KIND } from "./schema";
+import { finalizeEvent, verifyEvent, nip44, type Event, type UnsignedEvent } from "nostr-tools";
+import { KIND, PRIVATE_TAG } from "./schema";
 import type {
   CreditContent,
   ConfirmationContent,
   OrgProfileContent,
+  ProfileContent,
   CredentialOfferContent,
 } from "./schema";
 import type { Identity } from "./identity";
+
+export type Visibility = "public" | "private";
+
+/**
+ * Self-encryption: derive a nip44 conversation key between your own key
+ * and your own pubkey. Only someone holding your private key can ever
+ * decrypt the result — that's what makes a "private" credit genuinely
+ * private rather than just unlisted on a public relay.
+ */
+function selfConversationKey(identity: Identity): Uint8Array {
+  return nip44.getConversationKey(identity.secretKey, identity.pubkey);
+}
+
+/** Build and sign a standard kind-0 profile (bio, title, location, skills). */
+export function signProfile(identity: Identity, content: ProfileContent): Event {
+  const unsigned: UnsignedEvent = {
+    kind: KIND.PROFILE,
+    pubkey: identity.pubkey,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [],
+    content: JSON.stringify(content),
+  };
+  return finalizeEvent(unsigned, identity.secretKey);
+}
 
 /** Every credit needs a stable id so it can be edited (replaced) or referenced by confirmations. Call this once when a credit is first created, then keep reusing it. */
 export function newCreditId(): string {
@@ -27,20 +52,59 @@ export function newCreditId(): string {
  * Re-signing with the same `creditId` (used as the NIP-33 "d" tag)
  * replaces the previous version on relays that honor NIP-33 — this is
  * how "editing a credit" works without a central UPDATE statement.
+ *
+ * `visibility: "private"` self-encrypts the content with nip44 before
+ * publishing. The event still goes out to relays (so it syncs across
+ * your own devices), but nobody without your private key — including
+ * relay operators — can read what's inside. Trade-off: a private
+ * credit can't be peer-confirmed by anyone else, since nobody else can
+ * read it to confirm it. That's inherent to the privacy guarantee, not
+ * a bug to work around.
  */
 export function signCredit(
   identity: Identity,
   creditId: string,
-  content: CreditContent
+  content: CreditContent,
+  visibility: Visibility = "public"
 ): Event {
+  const tags = [["d", creditId]];
+  let eventContent: string;
+
+  if (visibility === "private") {
+    tags.push([PRIVATE_TAG, "true"]);
+    eventContent = nip44.encrypt(JSON.stringify(content), selfConversationKey(identity));
+  } else {
+    eventContent = JSON.stringify(content);
+  }
+
   const unsigned: UnsignedEvent = {
     kind: KIND.CREDIT,
     pubkey: identity.pubkey,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [["d", creditId]],
-    content: JSON.stringify(content),
+    tags,
+    content: eventContent,
   };
   return finalizeEvent(unsigned, identity.secretKey);
+}
+
+/** True if a CREDIT event is tagged private (self-encrypted content). */
+export function isPrivateCredit(event: Event): boolean {
+  return event.tags.some((t) => t[0] === PRIVATE_TAG && t[1] === "true");
+}
+
+/**
+ * Decrypt a private credit's content. Only succeeds if `identity` is
+ * the same identity that encrypted it in the first place (i.e. you're
+ * viewing your own credit) — nip44 will throw otherwise, which we
+ * convert to `null` rather than letting it bubble up as a crash.
+ */
+export function decryptPrivateCredit(identity: Identity, event: Event): CreditContent | null {
+  try {
+    const plaintext = nip44.decrypt(event.content, selfConversationKey(identity));
+    return JSON.parse(plaintext) as CreditContent;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -1,67 +1,99 @@
 /**
  * identity.ts
  * -----------------------------------------------------------------------
- * Your Laminate identity IS a keypair. There is no username/password,
- * no email verification, no central account database. This is the whole
- * point — nobody can suspend, delete, or impersonate your identity
- * except you, because only you hold the private key.
+ * Your Laminate identity IS a keypair — there's no username/password,
+ * no email verification, no central account database. Nobody can
+ * suspend, delete, or impersonate you except you, because only you
+ * hold the private key.
  *
- * The real cost of this model: if you lose your private key, you lose
- * the identity. There's no "forgot password" email to click. This file
- * stores the key in the browser via nsec (bech32-encoded private key)
- * so it's copyable as a single line of text — treat that line the way
- * you'd treat a crypto wallet seed phrase. A production build should:
- *   1. Show the nsec once at signup with a clear "save this somewhere
- *      safe" warning, the same way wallets show a 12-word phrase.
- *   2. Consider a social-recovery scheme (e.g. threshold signatures
- *      held by trusted peers) as a friendlier alternative for
- *      non-technical users. That's a real design project on its own —
- *      not stubbed out here.
+ * The raw key (nsec1...) is a correct but genuinely unfriendly way to
+ * ask a non-technical person to back something up — it's a long,
+ * unfamiliar-looking string with no error correction and nothing to
+ * anchor it in muscle memory. Instead, identities here are created and
+ * restored via a 12-word recovery phrase, using NIP-06 (the standard
+ * BIP39/BIP32-based derivation Nostr clients use for exactly this).
+ * This is the same mental model as a crypto wallet seed phrase, and —
+ * because it's a real standard, not a Laminate-specific trick — the
+ * same phrase can be imported into any other NIP-06-compatible Nostr
+ * client if this project ever isn't your only option.
+ *
+ * The raw nsec/npub still exist under the hood (Nostr events are
+ * always signed with them) and are available for anyone who wants
+ * them, but they're no longer what a person is asked to look at or
+ * copy during normal use.
  * -----------------------------------------------------------------------
  */
 
-import {
-  generateSecretKey,
-  getPublicKey,
-  nip19,
-} from "nostr-tools";
+import { getPublicKey, nip19 } from "nostr-tools";
+import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { HDKey } from "@scure/bip32";
 
-const STORAGE_KEY = "laminate:nsec";
+const STORAGE_KEY = "laminate:mnemonic";
+
+/** NIP-06: m/44'/1237'/<account>'/0/0 — the standard Nostr derivation path. Account 0 unless someone deliberately wants multiple identities from one phrase. */
+const DERIVATION_PATH = "m/44'/1237'/0'/0/0";
 
 export interface Identity {
   /** Raw 32-byte secret key, used to sign events. Never leaves the device. */
   secretKey: Uint8Array;
   /** Hex-encoded public key. This IS your Laminate profile id. */
   pubkey: string;
-  /** bech32 "npub..." — the shareable, human-friendly form of your pubkey. */
+  /** bech32 "npub..." — the shareable, human-friendly form of your pubkey. Shown in "Advanced" contexts, not the main flow. */
   npub: string;
-  /** bech32 "nsec..." — the shareable, human-friendly form of your secret key. Guard this like a password. */
+  /** bech32 "nsec..." — derivable from the mnemonic, kept for completeness/advanced use. Prefer showing `mnemonic` to people instead. */
   nsec: string;
+  /** The 12-word recovery phrase — this is what people should actually back up. */
+  mnemonic: string;
 }
 
-function toIdentity(secretKey: Uint8Array): Identity {
+function deriveFromMnemonic(mnemonic: string): Identity {
+  const seed = mnemonicToSeedSync(mnemonic);
+  const root = HDKey.fromMasterSeed(seed);
+  const child = root.derive(DERIVATION_PATH);
+  const secretKey = child.privateKey;
+  if (!secretKey) throw new Error("Failed to derive a key from that recovery phrase.");
+
   const pubkey = getPublicKey(secretKey);
   return {
     secretKey,
     pubkey,
     npub: nip19.npubEncode(pubkey),
     nsec: nip19.nsecEncode(secretKey),
+    mnemonic,
   };
 }
 
-/** Create a brand new identity. Caller is responsible for showing the nsec to the user for backup before it's needed again. */
+/** Create a brand new identity with a fresh 12-word recovery phrase. */
 export function createIdentity(): Identity {
-  const secretKey = generateSecretKey();
-  return toIdentity(secretKey);
+  const mnemonic = generateMnemonic(wordlist, 128); // 128 bits of entropy = 12 words
+  return deriveFromMnemonic(mnemonic);
 }
 
-/** Restore an identity from a previously-saved nsec (e.g. the user pasting their backup back in on a new device). */
+/** Restore an identity from a previously-saved recovery phrase. */
+export function identityFromMnemonic(mnemonic: string): Identity {
+  const normalized = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!validateMnemonic(normalized, wordlist)) {
+    throw new Error("That doesn't look like a valid recovery phrase — check the words and try again.");
+  }
+  return deriveFromMnemonic(normalized);
+}
+
+/** Advanced/interop path: restore from a raw nsec instead of a phrase (e.g. an identity created in another Nostr client that isn't NIP-06 derived). Not the primary flow — no mnemonic is available for an identity restored this way. */
 export function identityFromNsec(nsec: string): Identity {
   const decoded = nip19.decode(nsec);
   if (decoded.type !== "nsec") {
     throw new Error("That doesn't look like a valid nsec key.");
   }
-  return toIdentity(decoded.data as Uint8Array);
+  const secretKey = decoded.data as Uint8Array;
+  const pubkey = getPublicKey(secretKey);
+  return {
+    secretKey,
+    pubkey,
+    npub: nip19.npubEncode(pubkey),
+    nsec: nip19.nsecEncode(secretKey),
+    mnemonic: "", // not recoverable from a raw key — flag this to the UI if it matters
+  };
 }
 
 /**
@@ -69,22 +101,30 @@ export function identityFromNsec(nsec: string): Identity {
  * (localStorage) so this scaffold runs anywhere with zero setup.
  *
  * Before shipping this for real, replace with something that doesn't
- * leave a raw secret key sitting in localStorage in the clear:
+ * leave a raw secret sitting in localStorage in the clear:
  *   - IndexedDB + a passphrase-derived encryption key (Web Crypto's
- *     PBKDF2/AES-GCM), so the key at rest is encrypted; or
+ *     PBKDF2/AES-GCM), so the value at rest is encrypted; or
  *   - delegate signing to a browser extension implementing NIP-07
  *     (e.g. Alby, nos2x) so the app never touches the raw key at all —
- *     this is the approach most real Nostr web clients use.
+ *     the approach most real Nostr web clients use, though it trades
+ *     away some of the "just works, no install" friendliness this
+ *     mnemonic approach is aiming for.
  */
 export function saveIdentityLocally(identity: Identity): void {
-  localStorage.setItem(STORAGE_KEY, identity.nsec);
+  if (identity.mnemonic) {
+    localStorage.setItem(STORAGE_KEY, identity.mnemonic);
+  } else {
+    // Identity was restored from a raw nsec with no mnemonic — fall back
+    // to storing the nsec directly under the same key so it still persists.
+    localStorage.setItem(STORAGE_KEY, identity.nsec);
+  }
 }
 
 export function loadIdentityLocally(): Identity | null {
-  const nsec = localStorage.getItem(STORAGE_KEY);
-  if (!nsec) return null;
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return null;
   try {
-    return identityFromNsec(nsec);
+    return saved.startsWith("nsec1") ? identityFromNsec(saved) : identityFromMnemonic(saved);
   } catch {
     return null;
   }

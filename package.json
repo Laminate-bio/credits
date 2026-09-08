@@ -10,7 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "nostr-tools": "^2.25.2"
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
+    "mammoth": "^1.12.2",
+    "nostr-tools": "^2.25.2",
+    "pdfjs-dist": "^6.3.289",
+    "read-excel-file": "^9.3.10"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

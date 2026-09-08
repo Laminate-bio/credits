@@ -3,112 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laminate (P2P scaffold)</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #201f1c; }
-    h1 { margin-bottom: 4px; }
-    .sub { color: #666; margin-top: 0; }
-    section { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
-    h2 { margin-top: 0; font-size: 18px; }
-    label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
-    input, select, textarea { width: 100%; padding: 8px; box-sizing: border-box; font-family: inherit; }
-    button { margin-top: 12px; padding: 8px 14px; cursor: pointer; }
-    .row { display: flex; gap: 10px; }
-    .row > div { flex: 1; }
-    .mono { font-family: monospace; font-size: 12px; word-break: break-all; background: #f5f5f5; padding: 8px; border-radius: 4px; }
-    .credit-card { border-top: 1px solid #eee; padding: 10px 0; }
-    .badge { color: #1D4E4E; font-weight: 600; font-size: 12px; border: 1px solid #2B6E6E; border-radius: 3px; padding: 1px 6px; margin-left: 6px; }
-    .warn { background: #fff8e6; border: 1px solid #e2c96b; padding: 10px; border-radius: 6px; font-size: 13px; }
-    .muted { color: #888; font-size: 13px; }
-  </style>
+  <title>Laminate</title>
 </head>
 <body>
-  <h1>Laminate</h1>
-  <p class="sub">P2P scaffold — identity, signed credits, and peer confirmation running over Nostr relays. No server, no login.</p>
-
-  <section id="identitySection">
-    <h2>Your identity</h2>
-    <div id="identityDisplay"></div>
-  </section>
-
-  <section id="addCreditSection" style="display:none;">
-    <h2>Add a credit</h2>
-    <label>Event name</label>
-    <input id="cf-eventName" placeholder="e.g. Bonnaroo Music & Arts Festival" />
-    <div class="row">
-      <div>
-        <label>Role</label>
-        <input id="cf-role" placeholder="e.g. Stage Manager" />
-      </div>
-      <div>
-        <label>Event type</label>
-        <select id="cf-type">
-          <option>Music Festival</option>
-          <option>Conference</option>
-          <option>Sporting Event</option>
-          <option>Corporate Event</option>
-          <option>Theater / Live Show</option>
-          <option>Other</option>
-        </select>
-      </div>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="#/" class="wordmark">LAMINATE<span class="dot">.</span></a>
+      <nav class="header-nav" id="headerNav"></nav>
     </div>
-    <div class="row">
-      <div>
-        <label>Year</label>
-        <input id="cf-year" type="number" placeholder="2024" />
-      </div>
-      <div>
-        <label>End year (optional)</label>
-        <input id="cf-endYear" type="number" />
-      </div>
-    </div>
-    <label>Description (optional)</label>
-    <textarea id="cf-desc"></textarea>
-    <button id="cf-save">Sign & publish credit</button>
-    <p class="muted" id="cf-status"></p>
-  </section>
+  </header>
+  <div class="page" id="app"></div>
 
-  <section id="myResumeSection" style="display:none;">
-    <h2>Your credits</h2>
-    <button id="refreshMine">Refresh from relays</button>
-    <div id="myCredits"></div>
-  </section>
-
-  <section id="lookupSection" style="display:none;">
-    <h2>Look up someone else's pass</h2>
-    <label>Their npub</label>
-    <input id="lookup-npub" placeholder="npub1..." />
-    <button id="lookup-btn">Fetch their credits</button>
-    <div id="lookupResults"></div>
-  </section>
-
-  <section id="orgSection" style="display:none;">
-    <h2>Event organizer demo: issue &amp; claim credits</h2>
-    <p class="warn">This is the "bulk-issue staff credits" flow. An org signs an <b>offer</b> — not a credit on anyone's profile. The worker has to claim it with their own signature before it appears anywhere.</p>
-
-    <h3>1. Act as an event organizer</h3>
-    <div id="orgIdentityDisplay"></div>
-
-    <h3>2. Issue a credential offer</h3>
-    <div class="row">
-      <div><label>Recipient (name/email, for your reference)</label><input id="of-recipient" placeholder="e.g. dana@example.com" /></div>
-      <div><label>Claim code (you send this to them)</label><input id="of-claimcode" placeholder="e.g. BONNAROO24-DANA" /></div>
-    </div>
-    <label>Event name</label>
-    <input id="of-eventName" placeholder="e.g. Bonnaroo Music & Arts Festival" />
-    <div class="row">
-      <div><label>Role</label><input id="of-role" placeholder="e.g. FOH Audio Engineer" /></div>
-      <div><label>Year</label><input id="of-year" type="number" placeholder="2024" /></div>
-    </div>
-    <button id="of-issue">Sign & publish offer</button>
-    <p class="muted" id="of-status"></p>
-
-    <h3>3. Claim an offer (as the worker)</h3>
-    <label>Claim code you received</label>
-    <input id="claim-code-input" placeholder="e.g. BONNAROO24-DANA" />
-    <button id="claim-btn">Find & claim this credit</button>
-    <p class="muted" id="claim-status"></p>
-  </section>
+  <footer class="site-footer">
+    <a href="#/why">Why we built this</a>
+  </footer>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

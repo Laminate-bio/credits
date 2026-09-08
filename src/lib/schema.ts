@@ -86,6 +86,24 @@ export interface OrgProfileContent {
   about?: string;
 }
 
+/**
+ * The JSON payload stored in a standard kind-0 PROFILE event's `content`.
+ * `name` and `about` are the standard NIP-01 fields recognized by any
+ * Nostr client; `title`, `location`, and `skills` are Laminate-specific
+ * extensions — harmless extra JSON keys that other clients will just
+ * ignore, but that our own UI reads back out.
+ */
+export interface ProfileContent {
+  name: string;
+  about?: string; // bio
+  title?: string; // e.g. "FOH Audio Engineer"
+  location?: string;
+  skills?: string[];
+}
+
+/** Tag name marking a CREDIT event's content as nip44-self-encrypted. Presence of this tag (value "true") means `content` is ciphertext, not plain JSON — see credentials.ts. */
+export const PRIVATE_TAG = "private";
+
 /** The JSON payload for a CREDENTIAL_OFFER event, before it's claimed. */
 export interface CredentialOfferContent {
   /** Free-text identifier the org used to name this person (email, badge name, etc). Not a pubkey — the org may not know the worker's pubkey yet. */
