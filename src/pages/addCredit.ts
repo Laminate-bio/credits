@@ -15,7 +15,13 @@ export function renderAddCredit(container: HTMLElement): void {
   container.innerHTML = `
     <h1 class="page-title">Add a credit</h1>
     <p class="page-sub">This gets signed with your key. Public credits show up in the feed and can be peer-confirmed; private ones are encrypted so only you can ever read them.</p>
-    <p class="page-sub" style="margin-top:-14px;"><a href="#/credits/import">Or import several at once from your resume →</a></p>
+    <div class="card" style="margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <strong>Have a resume already?</strong>
+        <p class="muted" style="margin:2px 0 0;">Upload it and we'll pull out likely event credits for you to review, instead of typing each one by hand.</p>
+      </div>
+      <a href="#/credits/import" class="btn btn-outline btn-sm" style="white-space:nowrap;">Import from resume</a>
+    </div>
     <div class="card">
       <div class="form-row">
         <label>Event name</label>

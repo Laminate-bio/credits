@@ -55,16 +55,25 @@ export async function renderProfileView(container: HTMLElement, npub?: string): 
       ${profile.title ? `<div class="pass-title">${escapeHtml(profile.title)}</div>` : ""}
       <div class="pass-meta">
         ${profile.location ? `<span>${escapeHtml(profile.location)}</span>` : ""}
-        <span title="${npubDisplay}">${npubDisplay.slice(0, 16)}…</span>
       </div>
       ${profile.about ? `<div class="pass-bio">${escapeHtml(profile.about)}</div>` : ""}
       ${profile.skills?.length ? `<div class="pass-skills">${profile.skills.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("")}</div>` : ""}
       <div class="pass-actions">
         <a href="#/credits/${npubDisplay}" class="btn btn-outline btn-sm">View credits</a>
+        <button class="btn btn-outline btn-sm" id="copy-profile-link">Copy profile link</button>
         ${isOwner ? `<a href="#/profile/edit" class="btn btn-outline btn-sm">Edit profile</a>` : ""}
       </div>
     </div>
   `;
+
+  document.getElementById("copy-profile-link")!.addEventListener("click", async (e) => {
+    const url = `${location.origin}${location.pathname}#/profile/${npubDisplay}`;
+    await navigator.clipboard.writeText(url);
+    const btn = e.currentTarget as HTMLButtonElement;
+    const original = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => (btn.textContent = original), 1500);
+  });
 }
 
 export function renderProfileEdit(container: HTMLElement): void {
