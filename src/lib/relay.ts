@@ -34,32 +34,69 @@ import { SimplePool, type Event, type Filter } from "nostr-tools";
  * (they're not sequential) but meaningfully improves the odds of a
  * complete result.
  */
+/**
+ * Public, free, widely-used relays as a starting default.
+ *
+ * Deliberately just two, and specifically these two: relay.damus.io and
+ * nos.lol are among the most consistently fast, reliable public relays
+ * in the whole Nostr ecosystem. This used to be five, on the theory
+ * that more relays meant better redundancy — but querySync waits for
+ * EVERY relay it queries to either respond or time out before it
+ * resolves anything, not just the fastest one. Adding relays without
+ * verifying they're actually fast from wherever your users are made
+ * every query slower, gated on whichever relay was worst that day.
+ * With realistically few users right now, speed matters far more than
+ * redundancy — revisit this trade-off once there's an actual reason to
+ * (censorship resistance, an outage of one of these two).
+ */
 export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
   "wss://nos.lol",
-  "wss://relay.nostr.band",
-  "wss://relay.primal.net",
-  "wss://nostr.wine",
 ];
 
 /**
  * How long a query waits for relays to finish responding before giving
- * up and returning whatever it has. Affordable to be generous here
- * now that queries are batched (a handful of round-trips per page,
- * not one per credit) — a slightly slower complete result beats a
- * fast incomplete one that makes the feed look like it's missing posts.
+ * up and returning whatever it has. Kept short and deliberately erring
+ * toward "fast but maybe incomplete" over "complete but slow" — with
+ * few users and few events right now, there's rarely enough data
+ * sitting on a slow relay to be worth waiting on.
  */
-const QUERY_MAX_WAIT_MS = 5000;
+const QUERY_MAX_WAIT_MS = 2500;
 
 const pool = new SimplePool();
 
-export async function publishEvent(event: Event, relays: string[] = DEFAULT_RELAYS): Promise<void> {
-  await Promise.any(pool.publish(relays, event));
+/**
+ * Short-lived in-memory cache so navigating around the site during a
+ * session doesn't re-run an identical relay query every single click —
+ * e.g. clicking Feed → Profile → Feed again within a few seconds reuses
+ * the first Feed query's result instead of hitting relays again.
+ * Intentionally short (not persisted, not shared across tabs) so it
+ * never meaningfully delays seeing a new credit someone actually just
+ * published — this is about avoiding redundant re-fetches, not being a
+ * real data layer.
+ */
+const CACHE_TTL_MS = 15_000;
+const queryCache = new Map<string, { events: Event[]; expiresAt: number }>();
+
+function cacheKey(filter: Filter, relays: string[]): string {
+  return JSON.stringify({ filter, relays });
 }
 
-/** One-shot query: fetch whatever matches `filter` from the given relays right now. */
-export async function queryEvents(filter: Filter, relays: string[] = DEFAULT_RELAYS): Promise<Event[]> {
-  return pool.querySync(relays, filter, { maxWait: QUERY_MAX_WAIT_MS });
+export async function publishEvent(event: Event, relays: string[] = DEFAULT_RELAYS): Promise<void> {
+  await Promise.any(pool.publish(relays, event));
+  queryCache.clear(); // whatever we just published should be visible immediately, not masked by a stale cache entry
+}
+
+/** One-shot query: fetch whatever matches `filter` from the given relays right now. Cached briefly — pass `forceFresh` (e.g. from an explicit Refresh button) to bypass the cache. */
+export async function queryEvents(filter: Filter, relays: string[] = DEFAULT_RELAYS, forceFresh = false): Promise<Event[]> {
+  const key = cacheKey(filter, relays);
+  const cached = queryCache.get(key);
+  if (!forceFresh && cached && cached.expiresAt > Date.now()) {
+    return cached.events;
+  }
+  const events = await pool.querySync(relays, filter, { maxWait: QUERY_MAX_WAIT_MS });
+  queryCache.set(key, { events, expiresAt: Date.now() + CACHE_TTL_MS });
+  return events;
 }
 
 /** Live subscription: `onEvent` fires for every matching event, including new ones as they arrive. Returns an unsubscribe function. */

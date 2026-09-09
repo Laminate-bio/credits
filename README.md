@@ -274,26 +274,38 @@ check contrast before committing rather than trusting the screen —
 [WebAIM's contrast checker](https://webaim.org/resources/contrastchecker/)
 is free and takes ten seconds per pair.
 
-### Why the feed used to be slow (and the fix)
+### Why the feed used to be slow (and the real fix)
 
 An earlier version fetched each credit's poster name and confirmation
 count with its own separate relay query, in a loop, one at a time. With
 N credits that meant roughly 2×N sequential relay round-trips before
-the feed could render — genuinely slow, and inconsistent, since a
-single slow relay in the middle of that chain stalled everything after
-it. `directory.ts` now batches these: one query for all the credits,
-one for every poster's profile (`authors: [pubkey1, pubkey2, ...]`),
-one for every credit's confirmations (`"#d": [tag1, tag2, ...]`) — 3
-total round-trips regardless of how many credits are on screen. Keep
-any new multi-credit feature in this same batched shape; a loop that
-awaits a per-item relay query is the bug to watch for.
+the feed could render. `directory.ts` batches these now: one query for
+all the credits, one for every poster's profile
+(`authors: [pubkey1, pubkey2, ...]`), one for every credit's
+confirmations (`"#d": [tag1, tag2, ...]`) — 3 total round-trips
+regardless of how many credits are on screen. Keep any new
+multi-credit feature in this same batched shape; a loop that awaits a
+per-item relay query is the bug to watch for.
 
-Also bumped from 3 default relays to 5, and set an explicit, generous
-query timeout (5s) now that there are far fewer queries to wait on —
-this trades a little speed for a more complete, consistent result, and
-should meaningfully reduce the "feed randomly looks empty" symptom that
-comes from relying on a small number of public relays that aren't
-always equally fast or up.
+**A follow-up mistake, corrected:** the first fix also bumped the
+relay list from 2 to 5 and raised the query timeout, on the theory
+that more relays meant better redundancy. That made things *worse* —
+`SimplePool.querySync` waits for **every** relay it queries to either
+respond or time out before resolving anything, not just the fastest
+one. Adding relays without verifying they're actually fast from real
+usage conditions just added more chances of the whole query getting
+gated behind one slow relay. Reverted to two specifically well-proven
+relays (`relay.damus.io`, `nos.lol`) and cut the timeout back down —
+see the comment above `DEFAULT_RELAYS` in `relay.ts` before changing
+this again. If you do want more relays later for redundancy, verify
+each one is actually fast first, and know that adding any relay makes
+every query only as fast as that relay's worst day.
+
+Also added a short (15s) in-memory query cache in `relay.ts` so
+clicking between pages during a session doesn't re-run identical
+queries — cleared automatically whenever something new gets published,
+and bypassable with a `forceFresh` flag (used by the feed's Refresh
+button).
 
 ### The credit lifecycle
 

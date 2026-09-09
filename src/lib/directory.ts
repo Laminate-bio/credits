@@ -212,8 +212,8 @@ export interface FeedItem {
  * every author's profile (batched), one for every credit's
  * confirmations (batched).
  */
-export async function fetchGlobalFeed(limit: number = FEED_LIMIT): Promise<FeedItem[]> {
-  const events = await queryEvents({ kinds: [KIND.CREDIT], limit } as any);
+export async function fetchGlobalFeed(limit: number = FEED_LIMIT, forceFresh = false): Promise<FeedItem[]> {
+  const events = await queryEvents({ kinds: [KIND.CREDIT], limit } as any, undefined, forceFresh);
   const latestByCreditId = dedupeReplaceable(events);
 
   const validPublic = latestByCreditId

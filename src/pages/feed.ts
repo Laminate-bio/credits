@@ -14,22 +14,22 @@ export async function renderFeed(container: HTMLElement): Promise<void> {
     <div id="feedList" class="loading">Loading from relays…</div>
   `;
 
-  document.getElementById("feed-refresh-btn")!.addEventListener("click", () => loadFeed());
-  await loadFeed();
+  document.getElementById("feed-refresh-btn")!.addEventListener("click", () => loadFeed(true));
+  await loadFeed(false);
 }
 
-async function loadFeed(): Promise<void> {
+async function loadFeed(forceFresh: boolean): Promise<void> {
   const listEl = document.getElementById("feedList")!;
   listEl.className = "loading";
   listEl.textContent = "Loading from relays…";
 
   let items: FeedItem[] = [];
   try {
-    items = await fetchGlobalFeed();
+    items = await fetchGlobalFeed(undefined, forceFresh);
   } catch {
     listEl.className = "";
     listEl.innerHTML = `<div class="error-box">Couldn't reach any relay. <button class="icon-btn" id="feed-retry-btn">Try again</button></div>`;
-    document.getElementById("feed-retry-btn")?.addEventListener("click", () => loadFeed());
+    document.getElementById("feed-retry-btn")?.addEventListener("click", () => loadFeed(true));
     return;
   }
   if (items.length === 0) {
