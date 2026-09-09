@@ -255,6 +255,18 @@ button, .btn {
 .pass-skills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .skill-tag { font-size: 12.5px; padding: 4px 10px; border: 1px solid #4C4F54; border-radius: 4px; color: #D8D9DB; }
 .pass-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+/* The pass card is always dark regardless of site theme, but .btn-outline's
+   default color/border assume they're sitting on a normal theme-flipping
+   card — in light mode that meant dark button text on this dark card,
+   unreadable. Force the fixed on-dark color here specifically. */
+.pass-actions .btn {
+  color: var(--on-dark-text);
+  border-color: rgba(247, 245, 240, 0.35);
+}
+.pass-actions .btn:hover {
+  border-color: rgba(247, 245, 240, 0.6);
+  background: rgba(247, 245, 240, 0.08);
+}
 
 /* ---------- Credit list ---------- */
 .credit-row { border-top: 1px solid var(--line); padding: 14px 2px; }
