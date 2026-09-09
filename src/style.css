@@ -260,12 +260,12 @@ button, .btn {
    card — in light mode that meant dark button text on this dark card,
    unreadable. Force the fixed on-dark color here specifically. */
 .pass-actions .btn {
-  color: var(--on-dark-text);
-  border-color: rgba(247, 245, 240, 0.35);
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 .pass-actions .btn:hover {
-  border-color: rgba(247, 245, 240, 0.6);
-  background: rgba(247, 245, 240, 0.08);
+  border-color: rgba(255, 255, 255, 0.65) !important;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ---------- Credit list ---------- */

@@ -4,20 +4,34 @@ import { escapeHtml } from "../util";
 
 export async function renderFeed(container: HTMLElement): Promise<void> {
   container.innerHTML = `
-    <h1 class="page-title">Feed</h1>
-    <p class="page-sub">Recent public credits from across the network — festivals, conferences, sporting events, all of it. Private credits never appear here.</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h1 class="page-title">Feed</h1>
+        <p class="page-sub">Recent public credits from across the network — festivals, conferences, sporting events, all of it. Private credits never appear here.</p>
+      </div>
+      <button class="btn btn-outline btn-sm" id="feed-refresh-btn">Refresh</button>
+    </div>
     <div id="feedList" class="loading">Loading from relays…</div>
   `;
+
+  document.getElementById("feed-refresh-btn")!.addEventListener("click", () => loadFeed());
+  await loadFeed();
+}
+
+async function loadFeed(): Promise<void> {
+  const listEl = document.getElementById("feedList")!;
+  listEl.className = "loading";
+  listEl.textContent = "Loading from relays…";
 
   let items: FeedItem[] = [];
   try {
     items = await fetchGlobalFeed();
   } catch {
-    document.getElementById("feedList")!.innerHTML = `<div class="error-box">Couldn't reach any relay. Check your connection and refresh.</div>`;
+    listEl.className = "";
+    listEl.innerHTML = `<div class="error-box">Couldn't reach any relay. <button class="icon-btn" id="feed-retry-btn">Try again</button></div>`;
+    document.getElementById("feed-retry-btn")?.addEventListener("click", () => loadFeed());
     return;
   }
-
-  const listEl = document.getElementById("feedList")!;
   if (items.length === 0) {
     listEl.innerHTML = `
       <div class="empty-state">

@@ -6,6 +6,16 @@
  * "give me a pubkey's full resume, with live verification status" and
  * "show me what's happening across the whole network" live — the
  * things the UI actually calls.
+ *
+ * Performance note: every function here that deals with multiple
+ * credits batches its follow-up queries (profile lookups, confirmation
+ * lookups) into a single relay round-trip using an array filter (e.g.
+ * `authors: [pubkey1, pubkey2, ...]` or `"#d": [tag1, tag2, ...]`),
+ * rather than querying once per credit in a loop. An earlier version
+ * did the latter — correct, but with N credits it meant roughly 2×N
+ * sequential relay round-trips before the feed could render, which is
+ * exactly why the feed used to feel slow and inconsistent. Keep new
+ * multi-credit queries in this same batched shape.
  * -----------------------------------------------------------------------
  */
 
@@ -48,13 +58,58 @@ function dedupeReplaceable(events: Event[]): Event[] {
   return [...latest.values()];
 }
 
-/** Fetch a pubkey's current profile (bio, title, location, skills). Null if they haven't published one yet. */
-export async function fetchProfile(pubkey: string): Promise<ProfileContent | null> {
-  const events = await queryEvents({ kinds: [KIND.PROFILE], authors: [pubkey] });
+/**
+ * Fetch active (non-retracted) confirmations for many credits at once,
+ * across possibly-different owners, in a single relay query. Returns a
+ * map keyed by the same "d" tag used on CONFIRMATION events
+ * (`${ownerPubkey}:${creditEventId}`) so callers can look up their own
+ * events by building the same key.
+ */
+async function fetchConfirmationsBatch(dTags: string[]): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (dTags.length === 0) return result;
+
+  const events = await queryEvents({ kinds: [KIND.CONFIRMATION], "#d": dTags } as any);
+  const latest = dedupeReplaceable(events);
+  const active = latest.filter((e) => isEventValid(e) && isConfirmationActive(e));
+
+  for (const e of active) {
+    const dTag = e.tags.find((t) => t[0] === "d")?.[1] ?? "";
+    if (!result.has(dTag)) result.set(dTag, []);
+    result.get(dTag)!.push(e.pubkey);
+  }
+  return result;
+}
+
+/**
+ * Fetch profiles for many pubkeys at once, in a single relay query.
+ * Returns a map keyed by pubkey; pubkeys with no published profile are
+ * simply absent from the map rather than mapped to null.
+ */
+async function fetchProfilesBatch(pubkeys: string[]): Promise<Map<string, ProfileContent>> {
+  const result = new Map<string, ProfileContent>();
+  const unique = [...new Set(pubkeys)];
+  if (unique.length === 0) return result;
+
+  const events = await queryEvents({ kinds: [KIND.PROFILE], authors: unique });
   const valid = events.filter(isEventValid);
-  if (valid.length === 0) return null;
-  const latest = valid.sort((a, b) => b.created_at - a.created_at)[0];
-  return parseContent<ProfileContent>(latest);
+
+  const latestPerAuthor = new Map<string, Event>();
+  for (const e of valid) {
+    const existing = latestPerAuthor.get(e.pubkey);
+    if (!existing || e.created_at > existing.created_at) latestPerAuthor.set(e.pubkey, e);
+  }
+  for (const [pubkey, e] of latestPerAuthor) {
+    const content = parseContent<ProfileContent>(e);
+    if (content) result.set(pubkey, content);
+  }
+  return result;
+}
+
+/** Fetch a single pubkey's current profile (bio, title, location, skills). Null if they haven't published one yet. For fetching several profiles at once, use the internal batch helper instead of calling this in a loop. */
+export async function fetchProfile(pubkey: string): Promise<ProfileContent | null> {
+  const batch = await fetchProfilesBatch([pubkey]);
+  return batch.get(pubkey) ?? null;
 }
 
 /**
@@ -75,46 +130,45 @@ export async function fetchResumeFor(
 ): Promise<ResolvedCredit[]> {
   const creditEvents = await queryEvents({ kinds: [KIND.CREDIT], authors: [pubkey] });
   const latestByCreditId = dedupeReplaceable(creditEvents);
+  const isOwnerViewing = !!viewerIdentity && viewerIdentity.pubkey === pubkey;
 
-  const results: ResolvedCredit[] = [];
+  // First pass: validate signatures and decode content, without touching
+  // the network again — this decides which events are even worth asking
+  // relays about confirmations for.
+  const decoded: { event: Event; content: CreditContent; isPrivate: boolean }[] = [];
   for (const event of latestByCreditId) {
-    if (!isEventValid(event)) continue; // never trust an event whose signature doesn't check out
-    const isOwnerViewing = !!viewerIdentity && viewerIdentity.pubkey === pubkey;
+    if (!isEventValid(event)) continue;
     const priv = isPrivateCredit(event);
-
     let content: CreditContent | null;
     if (priv) {
-      if (!isOwnerViewing) continue; // can't read it, can't show it
+      if (!isOwnerViewing) continue;
       content = decryptPrivateCredit(viewerIdentity!, event);
     } else {
       content = parseContent<CreditContent>(event);
     }
     if (!content) continue;
+    decoded.push({ event, content, isPrivate: priv });
+  }
 
-    const confirmedBy = priv ? [] : await fetchActiveConfirmers(pubkey, event.id);
-    results.push({
+  // One batched query for every public credit's confirmations, instead
+  // of one query per credit.
+  const dTags = decoded.filter((d) => !d.isPrivate).map((d) => `${pubkey}:${d.event.id}`);
+  const confirmationsByDTag = await fetchConfirmationsBatch(dTags);
+
+  const results: ResolvedCredit[] = decoded.map(({ event, content, isPrivate }) => {
+    const confirmedBy = isPrivate ? [] : confirmationsByDTag.get(`${pubkey}:${event.id}`) ?? [];
+    return {
       event,
       content,
-      isPrivate: priv,
+      isPrivate,
       confirmedBy,
       verified: confirmedBy.length >= VERIFICATION_THRESHOLD,
-    });
-  }
+    };
+  });
 
   // newest first, by end year if present, else year
   results.sort((a, b) => (b.content.endYear ?? b.content.year) - (a.content.endYear ?? a.content.year));
   return results;
-}
-
-/** Every pubkey currently confirming a given credit (retractions already filtered out). */
-async function fetchActiveConfirmers(ownerPubkey: string, creditEventId: string): Promise<string[]> {
-  const dTag = `${ownerPubkey}:${creditEventId}`;
-  const confirmationEvents = await queryEvents({
-    kinds: [KIND.CONFIRMATION],
-    "#d": [dTag],
-  } as any);
-  const latest = dedupeReplaceable(confirmationEvents);
-  return latest.filter((e) => isEventValid(e) && isConfirmationActive(e)).map((e) => e.pubkey);
 }
 
 /**
@@ -152,6 +206,11 @@ export interface FeedItem {
  * post first. Private credits are structurally excluded — their
  * content is ciphertext, so it fails JSON parsing and gets filtered
  * out even without checking the privacy tag, as defense in depth.
+ *
+ * This does exactly 3 relay round-trips total regardless of how many
+ * credits are in the feed: one for the credits themselves, one for
+ * every author's profile (batched), one for every credit's
+ * confirmations (batched).
  */
 export async function fetchGlobalFeed(limit: number = FEED_LIMIT): Promise<FeedItem[]> {
   const events = await queryEvents({ kinds: [KIND.CREDIT], limit } as any);
@@ -162,28 +221,24 @@ export async function fetchGlobalFeed(limit: number = FEED_LIMIT): Promise<FeedI
     .sort((a, b) => b.created_at - a.created_at)
     .slice(0, limit);
 
-  const profileCache = new Map<string, string | null>();
-  const items: FeedItem[] = [];
+  const decoded = validPublic
+    .map((event) => ({ event, content: parseContent<CreditContent>(event) }))
+    .filter((d): d is { event: Event; content: CreditContent } => d.content !== null);
 
-  for (const event of validPublic) {
-    const content = parseContent<CreditContent>(event);
-    if (!content) continue;
+  const [profilesByPubkey, confirmationsByDTag] = await Promise.all([
+    fetchProfilesBatch(decoded.map((d) => d.event.pubkey)),
+    fetchConfirmationsBatch(decoded.map((d) => `${d.event.pubkey}:${d.event.id}`)),
+  ]);
 
-    if (!profileCache.has(event.pubkey)) {
-      const profile = await fetchProfile(event.pubkey);
-      profileCache.set(event.pubkey, profile?.name ?? null);
-    }
-    const confirmedBy = await fetchActiveConfirmers(event.pubkey, event.id);
-
-    items.push({
+  return decoded.map(({ event, content }) => {
+    const confirmedBy = confirmationsByDTag.get(`${event.pubkey}:${event.id}`) ?? [];
+    return {
       event,
       content,
       authorPubkey: event.pubkey,
-      authorName: profileCache.get(event.pubkey) ?? null,
+      authorName: profilesByPubkey.get(event.pubkey)?.name ?? null,
       confirmedBy,
       verified: confirmedBy.length >= VERIFICATION_THRESHOLD,
-    });
-  }
-
-  return items;
+    };
+  });
 }

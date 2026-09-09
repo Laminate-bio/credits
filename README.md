@@ -274,6 +274,27 @@ check contrast before committing rather than trusting the screen —
 [WebAIM's contrast checker](https://webaim.org/resources/contrastchecker/)
 is free and takes ten seconds per pair.
 
+### Why the feed used to be slow (and the fix)
+
+An earlier version fetched each credit's poster name and confirmation
+count with its own separate relay query, in a loop, one at a time. With
+N credits that meant roughly 2×N sequential relay round-trips before
+the feed could render — genuinely slow, and inconsistent, since a
+single slow relay in the middle of that chain stalled everything after
+it. `directory.ts` now batches these: one query for all the credits,
+one for every poster's profile (`authors: [pubkey1, pubkey2, ...]`),
+one for every credit's confirmations (`"#d": [tag1, tag2, ...]`) — 3
+total round-trips regardless of how many credits are on screen. Keep
+any new multi-credit feature in this same batched shape; a loop that
+awaits a per-item relay query is the bug to watch for.
+
+Also bumped from 3 default relays to 5, and set an explicit, generous
+query timeout (5s) now that there are far fewer queries to wait on —
+this trades a little speed for a more complete, consistent result, and
+should meaningfully reduce the "feed randomly looks empty" symptom that
+comes from relying on a small number of public relays that aren't
+always equally fast or up.
+
 ### The credit lifecycle
 
 1. **You sign a credit yourself** (`signCredit`) — event name, role, type,
