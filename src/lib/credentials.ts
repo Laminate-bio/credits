@@ -8,7 +8,7 @@
  */
 
 import { finalizeEvent, verifyEvent, nip44, type Event, type UnsignedEvent } from "nostr-tools";
-import { KIND, PRIVATE_TAG } from "./schema";
+import { KIND, PRIVATE_TAG, EVENT_TYPES } from "./schema";
 import type {
   CreditContent,
   ConfirmationContent,
@@ -101,7 +101,16 @@ export function isPrivateCredit(event: Event): boolean {
 export function decryptPrivateCredit(identity: Identity, event: Event): CreditContent | null {
   try {
     const plaintext = nip44.decrypt(event.content, selfConversationKey(identity));
-    return JSON.parse(plaintext) as CreditContent;
+    const parsed = JSON.parse(plaintext);
+    // Re-use the same shape validation as public credits — a corrupted or
+    // unexpectedly-shaped decryption result should be rejected, not shown.
+    const hasRequiredStrings =
+      typeof parsed?.eventName === "string" && parsed.eventName.trim().length > 0 &&
+      typeof parsed?.role === "string" && parsed.role.trim().length > 0;
+    const hasValidType = EVENT_TYPES.includes(parsed?.eventType);
+    const hasValidYear = typeof parsed?.year === "number" && Number.isFinite(parsed.year);
+    if (!hasRequiredStrings || !hasValidType || !hasValidYear) return null;
+    return parsed as CreditContent;
   } catch {
     return null;
   }
@@ -212,11 +221,51 @@ export function isEventValid(event: Event): boolean {
   return verifyEvent(event);
 }
 
-/** Safely parse an event's JSON content, returning null on malformed data instead of throwing (relay data should never be trusted blindly). */
+/**
+ * Safely parse an event's JSON content, returning null on malformed
+ * data instead of throwing. Note this alone does NOT verify the
+ * content actually has the shape you expect — see `parseCreditContent`
+ * for that, and prefer it for anything from CREDIT events.
+ */
 export function parseContent<T>(event: Event): T | null {
   try {
     return JSON.parse(event.content) as T;
   } catch {
     return null;
   }
+}
+
+/**
+ * Kind 32100 is a number we chose, not one reserved anywhere — nothing
+ * stops an unrelated app (or random test traffic) from publishing its
+ * own, differently-shaped events under the same kind number on the
+ * same public relays. An earlier version trusted any event of this
+ * kind blindly (`JSON.parse(...) as CreditContent`, a compile-time-only
+ * cast with zero runtime check), so foreign events with a coincidentally
+ * valid-JSON-but-wrong-shape content sailed straight into the feed as
+ * garbled "credits" — e.g. showing a real (unrelated) person's real
+ * Nostr display name next to "undefined" where a role and year should
+ * have been snippet.
+ *
+ * This checks the actual shape before accepting anything as a credit.
+ * Events that fail this are treated as not-ours and filtered out
+ * silently, the same as if they'd failed signature verification.
+ */
+export function parseCreditContent(event: Event): CreditContent | null {
+  const parsed = parseContent<any>(event);
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const hasRequiredStrings =
+    typeof parsed.eventName === "string" && parsed.eventName.trim().length > 0 &&
+    typeof parsed.role === "string" && parsed.role.trim().length > 0;
+  const hasValidType = EVENT_TYPES.includes(parsed.eventType);
+  const hasValidYear = typeof parsed.year === "number" && Number.isFinite(parsed.year) && parsed.year > 1900 && parsed.year < 2200;
+
+  if (!hasRequiredStrings || !hasValidType || !hasValidYear) return null;
+
+  // endYear and description are optional but must be the right type if present
+  if (parsed.endYear !== undefined && parsed.endYear !== null && typeof parsed.endYear !== "number") return null;
+  if (parsed.description !== undefined && typeof parsed.description !== "string") return null;
+
+  return parsed as CreditContent;
 }

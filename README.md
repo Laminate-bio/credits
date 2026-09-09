@@ -307,6 +307,49 @@ queries — cleared automatically whenever something new gets published,
 and bypassable with a `forceFresh` flag (used by the feed's Refresh
 button).
 
+### Kind-number collisions with unrelated Nostr traffic
+
+Kind `32100` (and the other custom kinds in `schema.ts`) are numbers
+*we* chose — not numbers reserved anywhere. On shared public relays,
+nothing stops a completely unrelated app (or random test traffic) from
+publishing its own, differently-shaped events under the same kind
+number. An earlier version trusted any event of the right kind
+blindly — `JSON.parse(event.content) as CreditContent`, a
+compile-time-only type assertion with zero runtime check — so a
+coincidental kind-32100 event from somewhere else in the wild showed
+up in the feed as a garbled "credit": a real (unrelated) person's real
+name, next to "undefined" where a role and year should have been.
+
+Fixed with actual runtime shape validation
+(`parseCreditContent` in `credentials.ts`): an event only gets treated
+as a credit if its content has the required string fields, a
+recognized event type, and a plausible year. Anything that doesn't
+match is silently filtered out, same as a bad signature. This is
+applied to both public and decrypted-private credit parsing.
+
+**Residual risk, not yet fixed the same way:** `CREDENTIAL_OFFER`
+parsing (in the organizer claim flow) still does the older blind cast.
+Lower urgency — claiming is a deliberate action against a specific
+claim code, not a broad feed scan — but it should get the same
+treatment eventually. The real fix, longer-term, is picking kind
+numbers via the actual NIP registry process (or at least tagging every
+event we publish with something like `["client", "laminate"]` and
+filtering queries on that tag) rather than trusting a kind number
+alone — noted in the existing NIP-doc roadmap item below.
+
+**Follow-up bug from the fix above, also now fixed:** the feed has no
+author filter — it asks relays for "the N most recent kind-32100
+events from anyone," unlike the profile page's credit list, which
+filters by a specific author and was never affected. If unrelated
+traffic using the same kind number outpaces actual Laminate traffic on
+a given relay, the "most recent N" window can fill up entirely with
+foreign junk that then gets correctly filtered out by the validation
+above — leaving the feed looking empty even though real credits exist
+further back in the relay's history. `fetchGlobalFeed` now fetches a
+wider raw window (5× the display limit) before validating shape, then
+slices down to the actual display limit afterward, so real credits
+aren't crowded out by noise ahead of them.
+
 ### The credit lifecycle
 
 1. **You sign a credit yourself** (`signCredit`) — event name, role, type,

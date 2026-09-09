@@ -57,6 +57,16 @@ export type EventType =
   | "Theater / Live Show"
   | "Other";
 
+/** Canonical list, used both for UI dropdowns and for validating that a parsed event actually looks like one of ours. */
+export const EVENT_TYPES: EventType[] = [
+  "Music Festival",
+  "Conference",
+  "Sporting Event",
+  "Corporate Event",
+  "Theater / Live Show",
+  "Other",
+];
+
 /** The JSON payload stored in a CREDIT event's `content` field. */
 export interface CreditContent {
   eventName: string;

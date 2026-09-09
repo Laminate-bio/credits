@@ -29,6 +29,7 @@ import {
   isPrivateCredit,
   decryptPrivateCredit,
   parseContent,
+  parseCreditContent,
 } from "./credentials";
 import type { Identity } from "./identity";
 
@@ -144,7 +145,7 @@ export async function fetchResumeFor(
       if (!isOwnerViewing) continue;
       content = decryptPrivateCredit(viewerIdentity!, event);
     } else {
-      content = parseContent<CreditContent>(event);
+      content = parseCreditContent(event);
     }
     if (!content) continue;
     decoded.push({ event, content, isPrivate: priv });
@@ -207,23 +208,30 @@ export interface FeedItem {
  * content is ciphertext, so it fails JSON parsing and gets filtered
  * out even without checking the privacy tag, as defense in depth.
  *
- * This does exactly 3 relay round-trips total regardless of how many
- * credits are in the feed: one for the credits themselves, one for
- * every author's profile (batched), one for every credit's
- * confirmations (batched).
+ * Fetches a wider raw window than it displays (`RAW_FETCH_MULTIPLIER`)
+ * before validating shape. Reason: the feed has no author filter — it
+ * asks for "the N most recent kind-32100 events from anyone" — so if
+ * unrelated traffic using the same kind number outpaces actual
+ * Laminate traffic on these relays, the most-recent-N window can fill
+ * up entirely with foreign junk that then gets correctly filtered out,
+ * leaving nothing real behind even though real credits exist further
+ * back. Casting a wider net before filtering, then slicing down to the
+ * actual display limit afterward, avoids that.
  */
+const RAW_FETCH_MULTIPLIER = 5;
+
 export async function fetchGlobalFeed(limit: number = FEED_LIMIT, forceFresh = false): Promise<FeedItem[]> {
-  const events = await queryEvents({ kinds: [KIND.CREDIT], limit } as any, undefined, forceFresh);
+  const events = await queryEvents({ kinds: [KIND.CREDIT], limit: limit * RAW_FETCH_MULTIPLIER } as any, undefined, forceFresh);
   const latestByCreditId = dedupeReplaceable(events);
 
-  const validPublic = latestByCreditId
+  const candidatePublic = latestByCreditId
     .filter((e) => isEventValid(e) && !isPrivateCredit(e))
-    .sort((a, b) => b.created_at - a.created_at)
-    .slice(0, limit);
+    .sort((a, b) => b.created_at - a.created_at);
 
-  const decoded = validPublic
-    .map((event) => ({ event, content: parseContent<CreditContent>(event) }))
-    .filter((d): d is { event: Event; content: CreditContent } => d.content !== null);
+  const decoded = candidatePublic
+    .map((event) => ({ event, content: parseCreditContent(event) }))
+    .filter((d): d is { event: Event; content: CreditContent } => d.content !== null)
+    .slice(0, limit); // apply the real display limit only after removing non-credits, not before
 
   const [profilesByPubkey, confirmationsByDTag] = await Promise.all([
     fetchProfilesBatch(decoded.map((d) => d.event.pubkey)),
