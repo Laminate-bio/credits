@@ -76,6 +76,14 @@ export async function renderCreditsPage(container: HTMLElement, npub: string): P
     )
     .join("");
 
+  const explainer = document.createElement("div");
+  explainer.className = "warn";
+  explainer.style.marginTop = "0";
+  explainer.innerHTML = isOwner
+    ? `Credits get a <strong>Verified</strong> badge once 2 people who were actually there confirm it. You can't verify your own — share your profile link (from the profile page) with people you worked alongside so they can.`
+    : `A credit gets a <strong>Verified</strong> badge once 2 people confirm they were there too. If you worked alongside ${escapeHtml(displayName)} on something below, use the verify button on that credit.`;
+  body.prepend(explainer);
+
   attachHandlers(resume, isOwner, pubkey);
 }
 
@@ -95,14 +103,14 @@ function creditRowHtml(c: ResolvedCredit, isOwner: boolean): string {
       <div class="credit-type-tag">${escapeHtml(c.content.eventType)}</div>
       ${c.content.description ? `<div class="credit-desc">${escapeHtml(c.content.description)}</div>` : ""}
 
-      ${!c.isPrivate && confirmations > 0 ? `<div class="confirmed-by">${confirmations} confirmation${confirmations === 1 ? "" : "s"}</div>` : ""}
+      ${!c.isPrivate && confirmations > 0 ? `<div class="confirmed-by">${confirmations} verification${confirmations === 1 ? "" : "s"}${isVerified ? "" : ` (needs ${VERIFICATION_THRESHOLD - confirmations} more)`}</div>` : ""}
 
       ${isOwner
         ? `<div class="credit-actions"><button class="icon-btn edit-credit-btn" data-id="${c.event.id}">Edit</button></div>`
         : !c.isPrivate
         ? state.me
-          ? `<button class="confirm-toggle-btn ${viewerConfirmed ? "confirmed" : ""}" data-id="${c.event.id}" data-action="${viewerConfirmed ? "unconfirm" : "confirm"}">${viewerConfirmed ? "You confirmed this — undo" : "Confirm — I was there too"}</button>`
-          : `<div class="muted"><a href="#/profile">Set up your profile</a> to confirm this credit.</div>`
+          ? `<button class="confirm-toggle-btn ${viewerConfirmed ? "confirmed" : ""}" data-id="${c.event.id}" data-action="${viewerConfirmed ? "unconfirm" : "confirm"}">${viewerConfirmed ? "You verified this — undo" : "Verify — I was there too"}</button>`
+          : `<div class="muted"><a href="#/profile">Set up your profile</a> to verify this credit.</div>`
         : ""}
     </div>
   `;

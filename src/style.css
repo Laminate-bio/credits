@@ -16,10 +16,17 @@
   --teal: #2B6E6E;
   --teal-dark: #1D4E4E;
   --graphite: #565A62;
-  --graphite-light: #84878E;
+  --graphite-light: #6E717A; /* darkened from #84878E — that failed WCAG AA (~3.7:1 on white); this clears 4.5:1 with margin */
   --text: #201F1C;
   --danger: #AF4430;
   --card-bg: #FFFFFF;
+  /* Fixed, never flips with theme — for text on components that are always
+     dark regardless of site theme (the header bar, the profile "pass").
+     Using --paper for this used to work by coincidence in light mode, but
+     broke in dark mode once --paper itself started meaning "dark page
+     background" — dark text on a dark card. This variable exists so that
+     mistake can't happen again. */
+  --on-dark-text: #F7F5F0;
   --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --font-body: 'Source Sans 3', 'Source Sans Pro', system-ui, -apple-system, sans-serif;
 }
@@ -34,9 +41,9 @@
   --teal: #4FA3A3;
   --teal-dark: #7FC4C4;
   --graphite: #B7BAC1;
-  --graphite-light: #83868D;
+  --graphite-light: #A3A6AD; /* lightened from #83868D — that failed WCAG AA (~4.3:1 on card bg); this clears 4.5:1 with margin */
   --text: #EDEBE5;
-  --danger: #E2776399;
+  --danger: #E27763; /* was #E2776399 — the trailing "99" was an accidental alpha channel, making this ~60% transparent and low-contrast against whatever sat behind it. Fixed to a solid color. */
   --card-bg: #1F2124;
 }
 
@@ -65,7 +72,7 @@ button, input, select, textarea { font-family: inherit; }
 /* ---------- Nav ---------- */
 .site-header {
   background: var(--ink);
-  color: var(--paper);
+  color: var(--on-dark-text);
   padding: 14px 24px;
   position: sticky;
   top: 0;
@@ -231,7 +238,7 @@ button, .btn {
 .pass {
   position: relative;
   background: var(--ink);
-  color: var(--paper);
+  color: var(--on-dark-text);
   border-radius: 16px;
   padding: 30px 26px 22px;
   margin-bottom: 20px;

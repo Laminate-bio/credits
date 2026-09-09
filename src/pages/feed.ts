@@ -44,7 +44,7 @@ export async function renderFeed(container: HTMLElement): Promise<void> {
         <div class="credit-role">${escapeHtml(item.content.role)}</div>
         <div class="credit-type-tag">${escapeHtml(item.content.eventType)} · ${item.content.year}${item.content.endYear ? "–" + item.content.endYear : ""}</div>
         ${item.content.description ? `<div class="credit-desc">${escapeHtml(item.content.description)}</div>` : ""}
-        ${item.confirmedBy.length ? `<div class="confirmed-by">${item.confirmedBy.length} confirmation${item.confirmedBy.length === 1 ? "" : "s"}</div>` : ""}
+        ${item.confirmedBy.length ? `<div class="confirmed-by">${item.confirmedBy.length} verification${item.confirmedBy.length === 1 ? "" : "s"}</div>` : ""}
       </div>
     `;
     })

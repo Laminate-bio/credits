@@ -250,6 +250,30 @@ for anyone who goes looking. The current copy is a first draft written
 from the conversation that shaped this project; it's meant to be
 rewritten in the actual founder's own words, not shipped as-is.
 
+### Color contrast (WCAG AA)
+
+Three real bugs got fixed here, not just a vibe check:
+
+1. **Dark mode text was invisible on the profile pass and header.** Both
+   reused `--paper` for "light text color," which coincidentally worked
+   in light mode but broke once dark mode redefined `--paper` to mean
+   "dark page background" — dark text on a dark card. Fixed with a
+   dedicated `--on-dark-text` variable that never flips with theme,
+   used only by components that are always dark regardless of site
+   theme (the header bar, the pass card).
+2. **Dark-mode error text had a stray alpha channel** (`#E2776399` —
+   the trailing `99` is opacity, not part of the color), making it
+   semi-transparent and low-contrast against whatever sat behind it.
+3. **`--graphite-light` (used for hints, "Confirmed by...", the footer
+   link) failed 4.5:1 in both themes** — measured ~3.7:1 light,
+   ~4.3:1 dark. Adjusted until it cleared 4.5:1 with real margin in
+   both.
+
+If you change any of the theme colors in `style.css` going forward,
+check contrast before committing rather than trusting the screen —
+[WebAIM's contrast checker](https://webaim.org/resources/contrastchecker/)
+is free and takes ten seconds per pair.
+
 ### The credit lifecycle
 
 1. **You sign a credit yourself** (`signCredit`) — event name, role, type,

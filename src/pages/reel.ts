@@ -20,7 +20,7 @@ export async function renderReelPage(container: HTMLElement, npub: string): Prom
   container.innerHTML = `
     <a href="#/credits/${npub}" class="btn btn-outline btn-sm" style="margin-bottom:20px;">‹ Back to credits</a>
     <h1 class="page-title">Generate a credits video</h1>
-    <p class="page-sub">Renders a scrolling credit roll — like the end of a film — with your name and everything you've logged, as a video you can download and post.</p>
+    <p class="page-sub">No one can see the stack of laminates on your desk. Share your credit reel!</p>
     <div id="reelBody" class="loading">Loading your credits…</div>
   `;
 
